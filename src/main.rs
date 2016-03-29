@@ -2,7 +2,7 @@ extern crate iron;
 extern crate router;
 extern crate persistent;
 extern crate postgres;
-extern crate time;
+extern crate chrono;
 extern crate rustc_serialize;
 
 // Iron
@@ -18,8 +18,8 @@ use persistent::Write;
 // Postgres
 use postgres::{Connection, SslMode};
 
-// Time
-use time::{Timespec};
+// Chrono
+use chrono::*;
 
 // JSON
 use rustc_serialize::json;
@@ -46,8 +46,8 @@ struct Product {
 	department_url: String,
 	category_url: String,
 	subcategory_url: String,
-	created_at: Timespec,
-	updated_at: Timespec,
+	created_at: DateTime<UTC>,
+	updated_at: DateTime<UTC>,
 }
 
 fn products_handler(_req: &mut Request) -> IronResult<Response> {

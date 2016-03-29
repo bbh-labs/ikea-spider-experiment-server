@@ -11,8 +11,8 @@ rustc-serialize = "*"
 
 [dependencies.postgres]
 version = "*"
-features = [ "time" ]
+features = [ "chrono" ]
 
-[dependencies.time]
+[dependencies.chrono]
 version = "*"
 features = [ "rustc-serialize" ]
