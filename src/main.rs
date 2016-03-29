@@ -93,7 +93,7 @@ fn products_handler(req: &mut Request) -> IronResult<Response> {
 
     for row in &conn.query(
             "SELECT * FROM product
-             WHERE department LIKE $1 AND category LIKE $2 AND subcategory LIKE $3
+             WHERE department ILIKE $1 AND category ILIKE $2 AND subcategory ILIKE $3
              ORDER BY name ASC",
             &[department, category, subcategory]
         ).unwrap() {
