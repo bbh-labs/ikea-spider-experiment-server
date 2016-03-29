@@ -89,13 +89,23 @@ fn products_handler(req: &mut Request) -> IronResult<Response> {
         Err(_) => "%%".to_string(),
     };
 
+    let ref country = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("country") {
+                Some(country) => format!("%{}%", country[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
     let mut products = Vec::new();
 
     for row in &conn.query(
             "SELECT * FROM product
-             WHERE department ILIKE $1 AND category ILIKE $2 AND subcategory ILIKE $3
+             WHERE department ILIKE $1 AND category ILIKE $2 AND subcategory ILIKE $3 AND country ILIKE $4
              ORDER BY name ASC",
-            &[department, category, subcategory]
+            &[department, category, subcategory, country]
         ).unwrap() {
         let product = Product {
             id: row.get(0),
