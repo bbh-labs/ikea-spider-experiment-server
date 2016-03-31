@@ -5,6 +5,11 @@ extern crate urlencoded;
 extern crate postgres;
 extern crate chrono;
 extern crate rustc_serialize;
+extern crate url;
+extern crate getopts;
+
+// Std
+use std::env;
 
 // Iron
 use iron::prelude::*;
@@ -22,11 +27,17 @@ use urlencoded::UrlEncodedQuery;
 // Postgres
 use postgres::{Connection, SslMode};
 
+// URL
+use url::percent_encoding::*;
+
 // Chrono
 use chrono::*;
 
 // JSON
 use rustc_serialize::json;
+
+// Getopts
+use getopts::Options;
 
 #[derive(Copy, Clone)]
 pub struct DatabaseConnection;
@@ -243,8 +254,73 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with((iron::status::NotFound, "")))
 }
 
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} [options]", program);
+    print!("{}", opts.usage(&brief));
+}
+
 fn main() {
-    let conn = Connection::connect("postgres://postgres@localhost", SslMode::None).unwrap();
+    // Parse program arguments
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+
+    let mut opts = Options::new();
+    opts.optopt("",
+                "dbhost",
+                "set database host",
+                "DBHOST");
+    opts.optopt("",
+                "dbport",
+                "set database port",
+                "DBPORT");
+    opts.optopt("",
+                "dbuser",
+                "set database username",
+                "DBUSER");
+    opts.optopt("",
+                "dbpass",
+                "set database password",
+                "DBPASS");
+    opts.optopt("",
+                "host",
+                "set server host",
+                "HOST");
+    opts.optopt("",
+                "port",
+                "set server port",
+                "PORT");
+    opts.optflag("h", "help", "print this help menu");
+
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(f) => panic!(f.to_string()),
+    };
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        return;
+    }
+
+    let dbhost: String = match matches.opt_str("dbhost") {
+        Some(t) => t,
+        None => "localhost".to_string(),
+    };
+
+    let dbport: String = match matches.opt_str("dbport") {
+        Some(t) => t,
+        None => "5432".to_string(),
+    };
+
+    let dbuser: String = match matches.opt_str("dbuser") {
+        Some(t) => percent_encode(t.as_bytes(), FORM_URLENCODED_ENCODE_SET),
+        None => "postgres".to_string(),
+    };
+
+    let dbpass: String = match matches.opt_str("dbpass") {
+        Some(t) => format!(":{}", percent_encode(t.as_bytes(), FORM_URLENCODED_ENCODE_SET)),
+        None => "".to_string(),
+    };
+
+    let conn = Connection::connect(format!("postgres://{}{}@{}:{}", dbuser, dbpass, dbhost, dbport).as_str(), SslMode::None).unwrap();
 
     let mut router = Router::new();
     router.get("/products", products_handler);
@@ -254,5 +330,18 @@ fn main() {
     let mut chain = Chain::new(router);
     chain.link(Write::<DatabaseConnection>::both(conn));
 
-    Iron::new(chain).http("localhost:8080").unwrap();
+    let host: String = match matches.opt_str("host") {
+        Some(t) => t,
+        None => "localhost".to_string(),
+    };
+
+    let port: String = match matches.opt_str("port") {
+        Some(t) => t,
+        None => "8080".to_string(),
+    };
+
+    let address = format!("{}:{}", host, port);
+    println!("Serving at {}", address);
+
+    Iron::new(chain).http(address.as_str()).unwrap();
 }

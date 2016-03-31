@@ -9,6 +9,8 @@ router = "*"
 persistent = "*"
 urlencoded = "*"
 rustc-serialize = "*"
+getopts = "*"
+url = "*"
 
 [dependencies.postgres]
 version = "*"
