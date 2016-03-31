@@ -65,6 +65,74 @@ struct Product {
 	updated_at: String,
 }
 
+fn categories_handler(req: &mut Request) -> IronResult<Response> {
+    // Get database handle
+    let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
+    let conn = mutex.lock().unwrap();
+
+    let ref country = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("country") {
+                Some(country) => format!("%{}%", country[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
+    let mut categories = Vec::new();
+
+    for row in &conn.query("SELECT category FROM product WHERE country ILIKE $1 GROUP BY category", &[country]).unwrap() {
+        let category: String = row.get(0);
+        categories.push(category);
+    }
+
+    if let Ok(json_output) = json::encode(&categories) {
+        return Ok(Response::with((iron::status::Ok, json_output)));
+    }
+
+    Ok(Response::with((iron::status::Ok)))
+}
+
+fn subcategories_handler(req: &mut Request) -> IronResult<Response> {
+    // Get database handle
+    let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
+    let conn = mutex.lock().unwrap();
+
+    let ref category = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("category") {
+                Some(category) => format!("%{}%", category[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
+    let ref country = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("country") {
+                Some(country) => format!("%{}%", country[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
+    let mut subcategories = Vec::new();
+
+    for row in &conn.query("SELECT subcategory FROM product WHERE category ILIKE $1 AND country ILIKE $2 GROUP BY subcategory", &[category, country]).unwrap() {
+        let subcategory: String = row.get(0);
+        subcategories.push(subcategory);
+    }
+
+    if let Ok(json_output) = json::encode(&subcategories) {
+        return Ok(Response::with((iron::status::Ok, json_output)));
+    }
+
+    Ok(Response::with((iron::status::Ok)))
+}
+
 fn products_handler(req: &mut Request) -> IronResult<Response> {
     // Get database handle
     let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
@@ -159,9 +227,11 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
     // Get database handle
     let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
     let conn = mutex.lock().unwrap();
+    
+    let mut products = Vec::new();
 
     let ref query = req.extensions.get::<Router>().unwrap().find("id").unwrap_or("/");
-    for row in &conn.query("SELECT * FROM product WHERE id = $1 LIMIT 1", &[&query]).unwrap() {
+    for row in &conn.query("SELECT * FROM product WHERE id = $1", &[&query]).unwrap() {
         let product = Product {
             id: row.get(0),
             name: row.get(1),
@@ -189,12 +259,14 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
         product.created_at = created_at.to_rfc2822();
         product.updated_at = updated_at.to_rfc2822();
 
-        if let Ok(json_output) = json::encode(&product) {
-            return Ok(Response::with((iron::status::Ok, json_output)));
-        }
+        products.push(product);
     }
 
-    Ok(Response::with((iron::status::NotFound, "")))
+    if let Ok(json_output) = json::encode(&products) {
+        Ok(Response::with((iron::status::Ok, json_output)))
+    } else {
+        Ok(Response::with((iron::status::NotFound, "")))
+    }
 }
 
 fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
@@ -218,7 +290,9 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
         Err(_) => return Ok(Response::with((iron::status::NotFound, ""))),
     };
 
-    for row in &conn.query("SELECT * FROM product WHERE id = $1 LIMIT 1", &[id]).unwrap() {
+    let mut products = Vec::new();
+
+    for row in &conn.query("SELECT * FROM product WHERE id = $1", &[id]).unwrap() {
         let product = Product {
             id: row.get(0),
             name: row.get(1),
@@ -246,12 +320,14 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
         product.created_at = created_at.to_rfc2822();
         product.updated_at = updated_at.to_rfc2822();
 
-        if let Ok(json_output) = json::encode(&product) {
-            return Ok(Response::with((iron::status::Ok, json_output)));
-        }
+        products.push(product);
     }
 
-    Ok(Response::with((iron::status::NotFound, "")))
+    if let Ok(json_output) = json::encode(&products) {
+        Ok(Response::with((iron::status::Ok, json_output)))
+    } else {
+        Ok(Response::with((iron::status::NotFound, "")))
+    }
 }
 
 fn print_usage(program: &str, opts: Options) {
@@ -323,6 +399,8 @@ fn main() {
     let conn = Connection::connect(format!("postgres://{}{}@{}:{}", dbuser, dbpass, dbhost, dbport).as_str(), SslMode::None).unwrap();
 
     let mut router = Router::new();
+    router.get("/categories", categories_handler);
+    router.get("/subcategories", subcategories_handler);
     router.get("/products", products_handler);
     router.get("/product", product_handler_with_query);
     router.get("/product/:id", product_handler);
