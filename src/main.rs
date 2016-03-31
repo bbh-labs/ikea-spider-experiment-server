@@ -13,6 +13,7 @@ use std::env;
 
 // Iron
 use iron::prelude::*;
+use iron::headers;
 use iron::typemap::Key;
 
 // Router
@@ -88,7 +89,9 @@ fn categories_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&categories) {
-        return Ok(Response::with((iron::status::Ok, json_output)));
+        let mut response = Response::with((iron::status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
     }
 
     Ok(Response::with((iron::status::Ok)))
@@ -127,10 +130,12 @@ fn subcategories_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&subcategories) {
-        return Ok(Response::with((iron::status::Ok, json_output)));
+        let mut response = Response::with((iron::status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
     }
 
-    Ok(Response::with((iron::status::Ok)))
+    Ok(Response::with((iron::status::NotFound)))
 }
 
 fn products_handler(req: &mut Request) -> IronResult<Response> {
@@ -217,10 +222,12 @@ fn products_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&products) {
-        return Ok(Response::with((iron::status::Ok, json_output)));
+        let mut response = Response::with((iron::status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
     }
 
-    Ok(Response::with((iron::status::Ok)))
+    Ok(Response::with((iron::status::NotFound)))
 }
 
 fn product_handler(req: &mut Request) -> IronResult<Response> {
@@ -263,10 +270,12 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&products) {
-        Ok(Response::with((iron::status::Ok, json_output)))
-    } else {
-        Ok(Response::with((iron::status::NotFound, "")))
+        let mut response = Response::with((iron::status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
     }
+    
+    Ok(Response::with((iron::status::NotFound, "")))
 }
 
 fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
@@ -324,10 +333,12 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&products) {
-        Ok(Response::with((iron::status::Ok, json_output)))
-    } else {
-        Ok(Response::with((iron::status::NotFound, "")))
+        let mut response = Response::with((iron::status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
     }
+    
+    Ok(Response::with((iron::status::NotFound, "")))
 }
 
 fn print_usage(program: &str, opts: Options) {
