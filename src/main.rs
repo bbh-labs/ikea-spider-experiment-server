@@ -10,7 +10,7 @@ extern crate getopts;
 
 // Std
 use std::env;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // Iron
 use iron::prelude::*;
@@ -297,7 +297,7 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
             countries.push(country);
         }
 
-        let mut country_products = HashMap::<String, Vec<Product>>::new();
+        let mut country_products = BTreeMap::<String, Vec<Product>>::new();
         for country in countries {
             let mut products = Vec::<Product>::new();
             for row in &conn.query(&format!("SELECT * FROM product WHERE id IN ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
@@ -427,7 +427,7 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
             countries.push(country);
         }
 
-        let mut country_products = HashMap::<String, Vec<Product>>::new();
+        let mut country_products = BTreeMap::<String, Vec<Product>>::new();
         for country in countries {
             let mut products = Vec::<Product>::new();
             for row in &conn.query(&format!("SELECT * FROM product WHERE id in ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
