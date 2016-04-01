@@ -10,10 +10,12 @@ extern crate getopts;
 
 // Std
 use std::env;
+use std::collections::HashMap;
 
 // Iron
 use iron::prelude::*;
 use iron::headers;
+use iron::status;
 use iron::typemap::Key;
 
 // Router
@@ -45,7 +47,7 @@ pub struct DatabaseConnection;
 
 impl Key for DatabaseConnection { type Value = Connection; }
 
-#[derive(RustcEncodable)]
+#[derive(RustcDecodable, RustcEncodable)]
 struct Product {
     id: String,
     name: String,
@@ -89,12 +91,12 @@ fn categories_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&categories) {
-        let mut response = Response::with((iron::status::Ok, json_output));
+        let mut response = Response::with((status::Ok, json_output));
         response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
         return Ok(response);
     }
 
-    Ok(Response::with((iron::status::Ok)))
+    Ok(Response::with((status::Ok)))
 }
 
 fn subcategories_handler(req: &mut Request) -> IronResult<Response> {
@@ -130,12 +132,12 @@ fn subcategories_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&subcategories) {
-        let mut response = Response::with((iron::status::Ok, json_output));
+        let mut response = Response::with((status::Ok, json_output));
         response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
         return Ok(response);
     }
 
-    Ok(Response::with((iron::status::NotFound)))
+    Ok(Response::with((status::NotFound)))
 }
 
 fn products_handler(req: &mut Request) -> IronResult<Response> {
@@ -222,12 +224,12 @@ fn products_handler(req: &mut Request) -> IronResult<Response> {
     }
 
     if let Ok(json_output) = json::encode(&products) {
-        let mut response = Response::with((iron::status::Ok, json_output));
+        let mut response = Response::with((status::Ok, json_output));
         response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
         return Ok(response);
     }
 
-    Ok(Response::with((iron::status::NotFound)))
+    Ok(Response::with((status::NotFound)))
 }
 
 fn product_handler(req: &mut Request) -> IronResult<Response> {
@@ -237,45 +239,115 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
     
     let mut products = Vec::new();
 
-    let ref query = req.extensions.get::<Router>().unwrap().find("id").unwrap_or("/");
-    for row in &conn.query("SELECT * FROM product WHERE id = $1", &[&query]).unwrap() {
-        let product = Product {
-            id: row.get(0),
-            name: row.get(1),
-            typ: row.get(2),
-            country: row.get(3),
-            price: row.get(4),
-            unit: row.get(5),
-            metric: row.get(6),
-            url: row.get(7),
-            image_url: row.get(8),
-            department: row.get(9),
-            category: row.get(10),
-            subcategory: row.get(11),
-            department_url: row.get(12),
-            category_url: row.get(13),
-            subcategory_url: row.get(14),
-            created_at: "".to_string(),
-            updated_at: "".to_string(),
-        };
+    let ref ids = req.extensions.get::<Router>().unwrap().find("id").unwrap_or("/");
+    let ids_vec: Vec<&str> = ids.split(",").collect();
+    if ids_vec.len() == 0 {
+        return Ok(Response::with(status::BadRequest));
+    } else if ids_vec.len() == 1 {
+        for row in &conn.query("SELECT * FROM product WHERE id = $1", &[&ids]).unwrap() {
+            let product = Product {
+                id: row.get(0),
+                name: row.get(1),
+                typ: row.get(2),
+                country: row.get(3),
+                price: row.get(4),
+                unit: row.get(5),
+                metric: row.get(6),
+                url: row.get(7),
+                image_url: row.get(8),
+                department: row.get(9),
+                category: row.get(10),
+                subcategory: row.get(11),
+                department_url: row.get(12),
+                category_url: row.get(13),
+                subcategory_url: row.get(14),
+                created_at: "".to_string(),
+                updated_at: "".to_string(),
+            };
 
-        let created_at: DateTime<UTC> = row.get(15);
-        let updated_at: DateTime<UTC> = row.get(16);
+            let created_at: DateTime<UTC> = row.get(15);
+            let updated_at: DateTime<UTC> = row.get(16);
 
-        let mut product = product;
-        product.created_at = created_at.to_rfc2822();
-        product.updated_at = updated_at.to_rfc2822();
+            let mut product = product;
+            product.created_at = created_at.to_rfc2822();
+            product.updated_at = updated_at.to_rfc2822();
 
-        products.push(product);
+            products.push(product);
+        }
+
+        if let Ok(json_output) = json::encode(&products) {
+            let mut response = Response::with((status::Ok, json_output));
+            response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+            return Ok(response);
+        }
+    } else if ids_vec.len() > 1 {
+        let mut index = 0;
+        let mut ids_str = String::new();
+        for id in &ids_vec {
+            ids_str.push_str(&format!("'{}'", id));
+            if index < ids_vec.len() - 1 {
+                ids_str.push_str(",");
+            }
+            index += 1;
+        }
+
+        let mut countries = Vec::new();
+        for row in &conn.query(&format!("SELECT country FROM product WHERE id IN ({}) GROUP BY country", &ids_str), &[]).unwrap() {
+            let country: String = row.get(0);
+            countries.push(country);
+        }
+
+        let mut country_products = HashMap::<String, Vec<Product>>::new();
+        for country in countries {
+            let mut products = Vec::<Product>::new();
+            for row in &conn.query(&format!("SELECT * FROM product WHERE id IN ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
+                let product = Product {
+                    id: row.get(0),
+                    name: row.get(1),
+                    typ: row.get(2),
+                    country: row.get(3),
+                    price: row.get(4),
+                    unit: row.get(5),
+                    metric: row.get(6),
+                    url: row.get(7),
+                    image_url: row.get(8),
+                    department: row.get(9),
+                    category: row.get(10),
+                    subcategory: row.get(11),
+                    department_url: row.get(12),
+                    category_url: row.get(13),
+                    subcategory_url: row.get(14),
+                    created_at: "".to_string(),
+                    updated_at: "".to_string(),
+                };
+
+                let created_at: DateTime<UTC> = row.get(15);
+                let updated_at: DateTime<UTC> = row.get(16);
+
+                let mut product = product;
+                product.created_at = created_at.to_rfc2822();
+                product.updated_at = updated_at.to_rfc2822();
+
+                products.push(product);
+            }
+
+            country_products.insert(country, products);
+        }
+
+        if let Ok(json_output) = json::encode(&country_products) {
+            let mut response = Response::with((status::Ok, json_output));
+            response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+            return Ok(response);
+        }
     }
 
     if let Ok(json_output) = json::encode(&products) {
-        let mut response = Response::with((iron::status::Ok, json_output));
+        let mut response = Response::with((status::Ok, json_output));
         response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
         return Ok(response);
     }
     
-    Ok(Response::with((iron::status::NotFound, "")))
+    Ok(Response::with((status::NotFound, "")))
 }
 
 fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
@@ -283,62 +355,123 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
     let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
     let conn = mutex.lock().unwrap();
 
-    let ref id = match req.get_ref::<UrlEncodedQuery>() {
+    let ids = match req.get_ref::<UrlEncodedQuery>() {
         Ok(ref hashmap) => {
             match hashmap.get("id") {
-                Some(id) => {
-                    if id.len() > 0 {
-                        id[0].clone()
+                Some(ids) => {
+                    if ids.len() > 0 {
+                        ids
                     } else {
-                        return Ok(Response::with((iron::status::NotFound, "")));
+                        return Ok(Response::with((status::NotFound, "")));
                     }
                 },
-                None => return Ok(Response::with((iron::status::NotFound, ""))),
+                None => return Ok(Response::with((status::NotFound, ""))),
             }
         },
-        Err(_) => return Ok(Response::with((iron::status::NotFound, ""))),
+        Err(_) => return Ok(Response::with((status::NotFound, ""))),
     };
 
-    let mut products = Vec::new();
+    if ids.len() == 1 {
+        let mut products = Vec::new();
 
-    for row in &conn.query("SELECT * FROM product WHERE id = $1", &[id]).unwrap() {
-        let product = Product {
-            id: row.get(0),
-            name: row.get(1),
-            typ: row.get(2),
-            country: row.get(3),
-            price: row.get(4),
-            unit: row.get(5),
-            metric: row.get(6),
-            url: row.get(7),
-            image_url: row.get(8),
-            department: row.get(9),
-            category: row.get(10),
-            subcategory: row.get(11),
-            department_url: row.get(12),
-            category_url: row.get(13),
-            subcategory_url: row.get(14),
-            created_at: "".to_string(),
-            updated_at: "".to_string(),
-        };
+        for row in &conn.query("SELECT * FROM product WHERE id = $1", &[&ids[0]]).unwrap() {
+            let product = Product {
+                id: row.get(0),
+                name: row.get(1),
+                typ: row.get(2),
+                country: row.get(3),
+                price: row.get(4),
+                unit: row.get(5),
+                metric: row.get(6),
+                url: row.get(7),
+                image_url: row.get(8),
+                department: row.get(9),
+                category: row.get(10),
+                subcategory: row.get(11),
+                department_url: row.get(12),
+                category_url: row.get(13),
+                subcategory_url: row.get(14),
+                created_at: "".to_string(),
+                updated_at: "".to_string(),
+            };
 
-        let created_at: DateTime<UTC> = row.get(15);
-        let updated_at: DateTime<UTC> = row.get(16);
+            let created_at: DateTime<UTC> = row.get(15);
+            let updated_at: DateTime<UTC> = row.get(16);
 
-        let mut product = product;
-        product.created_at = created_at.to_rfc2822();
-        product.updated_at = updated_at.to_rfc2822();
+            let mut product = product;
+            product.created_at = created_at.to_rfc2822();
+            product.updated_at = updated_at.to_rfc2822();
 
-        products.push(product);
-    }
+            products.push(product);
+        }
 
-    if let Ok(json_output) = json::encode(&products) {
-        let mut response = Response::with((iron::status::Ok, json_output));
-        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
-        return Ok(response);
+        if let Ok(json_output) = json::encode(&products) {
+            let mut response = Response::with((status::Ok, json_output));
+            response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+            return Ok(response);
+        }
+    } else if ids.len() > 1 {
+        let mut index = 0;
+        let mut ids_str = String::new();
+        for id in ids {
+            ids_str.push_str(&format!("'{}'", id));
+            if index < ids.len() - 1 {
+                ids_str.push_str(",");
+            }
+            index += 1;
+        }
+
+        let mut countries = Vec::new();
+        for row in &conn.query(&format!("SELECT country FROM product WHERE id in ({}) GROUP BY country", &ids_str), &[]).unwrap() {
+            let country: String = row.get(0);
+            countries.push(country);
+        }
+
+        let mut country_products = HashMap::<String, Vec<Product>>::new();
+        for country in countries {
+            let mut products = Vec::<Product>::new();
+            for row in &conn.query(&format!("SELECT * FROM product WHERE id in ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
+                let product = Product {
+                    id: row.get(0),
+                    name: row.get(1),
+                    typ: row.get(2),
+                    country: row.get(3),
+                    price: row.get(4),
+                    unit: row.get(5),
+                    metric: row.get(6),
+                    url: row.get(7),
+                    image_url: row.get(8),
+                    department: row.get(9),
+                    category: row.get(10),
+                    subcategory: row.get(11),
+                    department_url: row.get(12),
+                    category_url: row.get(13),
+                    subcategory_url: row.get(14),
+                    created_at: "".to_string(),
+                    updated_at: "".to_string(),
+                };
+
+                let created_at: DateTime<UTC> = row.get(15);
+                let updated_at: DateTime<UTC> = row.get(16);
+
+                let mut product = product;
+                product.created_at = created_at.to_rfc2822();
+                product.updated_at = updated_at.to_rfc2822();
+
+                products.push(product);
+            }
+
+            country_products.insert(country, products);
+        }
+
+        if let Ok(json_output) = json::encode(&country_products) {
+            let mut response = Response::with((status::Ok, json_output));
+            response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+            return Ok(response);
+        }
     }
     
-    Ok(Response::with((iron::status::NotFound, "")))
+    Ok(Response::with((status::NotFound, "")))
 }
 
 fn print_usage(program: &str, opts: Options) {
