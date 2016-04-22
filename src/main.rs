@@ -10,7 +10,6 @@ extern crate getopts;
 
 // Std
 use std::env;
-use std::collections::BTreeMap;
 
 // Iron
 use iron::prelude::*;
@@ -47,7 +46,7 @@ pub struct DatabaseConnection;
 
 impl Key for DatabaseConnection { type Value = Connection; }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(RustcEncodable)]
 struct Product {
     id: String,
     name: String,
@@ -66,6 +65,12 @@ struct Product {
 	subcategory_url: String,
 	created_at: String,
 	updated_at: String,
+}
+
+#[derive(RustcEncodable)]
+struct Market {
+    country: String,
+    products: Vec<Product>,
 }
 
 fn categories_handler(req: &mut Request) -> IronResult<Response> {
@@ -297,7 +302,7 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
             countries.push(country);
         }
 
-        let mut country_products = BTreeMap::<String, Vec<Product>>::new();
+        let mut markets = Vec::new();
         for country in countries {
             let mut products = Vec::<Product>::new();
             for row in &conn.query(&format!("SELECT * FROM product WHERE id IN ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
@@ -331,10 +336,10 @@ fn product_handler(req: &mut Request) -> IronResult<Response> {
                 products.push(product);
             }
 
-            country_products.insert(country, products);
+            markets.push(Market{ country: country, products: products });
         }
 
-        if let Ok(json_output) = json::encode(&country_products) {
+        if let Ok(json_output) = json::encode(&markets) {
             let mut response = Response::with((status::Ok, json_output));
             response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
             return Ok(response);
@@ -427,7 +432,7 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
             countries.push(country);
         }
 
-        let mut country_products = BTreeMap::<String, Vec<Product>>::new();
+        let mut markets = Vec::new();
         for country in countries {
             let mut products = Vec::<Product>::new();
             for row in &conn.query(&format!("SELECT * FROM product WHERE id in ({}) AND country LIKE $1", &ids_str), &[&country]).unwrap() {
@@ -461,10 +466,10 @@ fn product_handler_with_query(req: &mut Request) -> IronResult<Response> {
                 products.push(product);
             }
 
-            country_products.insert(country, products);
+            markets.push(Market{ country: country, products: products });
         }
 
-        if let Ok(json_output) = json::encode(&country_products) {
+        if let Ok(json_output) = json::encode(&markets) {
             let mut response = Response::with((status::Ok, json_output));
             response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
             return Ok(response);
