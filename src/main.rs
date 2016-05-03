@@ -73,7 +73,7 @@ struct Market {
     products: Vec<Product>,
 }
 
-fn categories_handler(req: &mut Request) -> IronResult<Response> {
+fn departments_handler(req: &mut Request) -> IronResult<Response> {
     // Get database handle
     let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
     let conn = mutex.lock().unwrap();
@@ -88,9 +88,50 @@ fn categories_handler(req: &mut Request) -> IronResult<Response> {
         Err(_) => "%%".to_string(),
     };
 
+    let mut departments = Vec::new();
+
+    for row in &conn.query("SELECT department FROM product WHERE country ILIKE $1 GROUP BY department", &[country]).unwrap() {
+        let department: String = row.get(0);
+        departments.push(department);
+    }
+
+    if let Ok(json_output) = json::encode(&departments) {
+        let mut response = Response::with((status::Ok, json_output));
+        response.headers.set(headers::AccessControlAllowOrigin::Value("*".to_string()));
+        return Ok(response);
+    }
+
+    Ok(Response::with((status::Ok)))
+}
+
+fn categories_handler(req: &mut Request) -> IronResult<Response> {
+    // Get database handle
+    let mutex = req.get::<Write<DatabaseConnection>>().unwrap();
+    let conn = mutex.lock().unwrap();
+
+    let ref department = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("department") {
+                Some(department) => format!("%{}%", department[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
+    let ref country = match req.get_ref::<UrlEncodedQuery>() {
+        Ok(ref hashmap) => {
+            match hashmap.get("country") {
+                Some(country) => format!("%{}%", country[0]),
+                None => "%%".to_string(),
+            }
+        },
+        Err(_) => "%%".to_string(),
+    };
+
     let mut categories = Vec::new();
 
-    for row in &conn.query("SELECT category FROM product WHERE country ILIKE $1 GROUP BY category", &[country]).unwrap() {
+    for row in &conn.query("SELECT category FROM product WHERE country ILIKE $1 AND department ILIKE $2 GROUP BY category", &[country, department]).unwrap() {
         let category: String = row.get(0);
         categories.push(category);
     }
@@ -536,18 +577,19 @@ fn main() {
     };
 
     let dbuser: String = match matches.opt_str("dbuser") {
-        Some(t) => percent_encode(t.as_bytes(), QUERY_ENCODE_SET).collect::<String>(),
+        Some(t) => percent_encode(t.as_bytes(), USERINFO_ENCODE_SET).collect::<String>(),
         None => "postgres".to_string(),
     };
 
     let dbpass: String = match matches.opt_str("dbpass") {
-        Some(t) => format!(":{}", percent_encode(t.as_bytes(), QUERY_ENCODE_SET)),
+        Some(t) => format!(":{}", percent_encode(t.as_bytes(), USERINFO_ENCODE_SET)),
         None => "".to_string(),
     };
 
     let conn = Connection::connect(format!("postgres://{}{}@{}:{}", dbuser, dbpass, dbhost, dbport).as_str(), SslMode::None).unwrap();
 
     let mut router = Router::new();
+    router.get("/departments", departments_handler);
     router.get("/categories", categories_handler);
     router.get("/subcategories", subcategories_handler);
     router.get("/products", products_handler);
